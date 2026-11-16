@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مُحمّل الميديا الاحترافي - SaveTheVideo</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --primary: #2ea043;
+            --primary-hover: #238636;
+            --danger: #f85149;
+            --success: #3fb950;
+        }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 16px;
+            max-width: 500px;
+            margin-inline: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding-bottom: 40px;
+        }
+        .header { text-align: center; padding: 10px 0; }
+        .header h1 { margin: 0; font-size: 1.4rem; color: var(--primary); }
+        .header p { margin: 5px 0 0; font-size: 0.85rem; color: var(--muted); }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        
+        label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+        input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            font-size: 0.95rem;
+            outline: none;
+            margin-bottom: 10px;
+        }
+        input:focus { border-color: var(--primary); }
+        .input-group { display: flex; gap: 8px; }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.95rem;
+            transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: var(--border); color: var(--text); width: auto; white-space: nowrap; }
+
+        #result-box { display: none; text-align: center; }
+        .download-btn {
+            display: block;
+            background: var(--success);
+            color: #000;
+            text-decoration: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 12px;
+        }
+        .error-text { color: var(--danger); font-size: 0.9rem; margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .history-item:last-child { border-bottom: none; }
+        .badge {
+            background: rgba(46, 160, 67, 0.15);
+            color: var(--success);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>⚡ مُحمّل الميديا الاحترافي</h1>
+        <p>مدعوم بـ SaveTheVideo و CorsProxy</p>
+    </div>
+
+    <div class="card">
+        <label>رابط الفيديو (Facebook, Instagram, TikTok, Twitter...):</label>
+        <div class="input-group">
+            <input type="url" id="media-url" placeholder="https://..." style="margin-bottom:0;">
+            <button class="btn btn-secondary" onclick="pasteLink()">📋 لصق</button>
+        </div>
+
+        <button class="btn" id="submit-btn" onclick="startDownload()" style="margin-top: 14px;">بدء الاستخراج والتحميل</button>
+    </div>
+
+    <div class="card" id="result-box">
+        <div id="status-msg" style="font-size: 0.9rem; color: var(--muted);">⏳ جاري إنشاء المهمة...</div>
+        <div id="video-title" style="font-size: 0.9rem; font-weight: bold; margin: 10px 0; color: var(--text);"></div>
+        <a id="final-download-link" class="download-btn" style="display: none;" target="_blank">⬇️ تنزيل الملف المباشر (MP4)</a>
+        <div id="error-box" class="error-text" style="display: none;"></div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--muted);">سجل الروابط الأخيرة</h3>
+        <div id="history-list">
+            <div style="color: var(--muted); font-size: 0.85rem; text-align: center;">لا توجد روابط سابقة</div>
+        </div>
+    </div>
+
+<script>
+    // ⚙️ ضع هنا مفتاح الـ API الخاص بـ Corsproxy الذي نسخته من لوحة التحكم
+    const API_KEY = 'ضع_مفتاحك_هنا'; 
+    const API = 'https://api.v02.savethevideo.com/tasks';
+
+    async function pasteLink() {
+        try {
+            const text = await navigator.clipboard.readText();
+            document.getElementById('media-url').value = text;
+        } catch (err) {
+            alert('الصق الرابط يدوياً في الخانة.');
+        }
+    }
+
+    async function startDownload() {
+        const url = document.getElementById('media-url').value.trim();
+        const resultBox = document.getElementById('result-box');
+        const statusMsg = document.getElementById('status-msg');
+        const titleEl = document.getElementById('video-title');
+        const dlLink = document.getElementById('final-download-link');
+        const errorBox = document.getElementById('error-box');
+        const submitBtn = document.getElementById('submit-btn');
+
+        if (!url) {
+            alert('الرجاء إدخال الرابط أولاً!');
+            return;
+        }
+        if (API_KEY === 'ضع_مفتاحك_هنا') {
+            alert('تنبيه: يجب وضع مفتاح Corsproxy API الصحيح في متغير API_KEY داخل الكود لكي يعمل بشكل صحيح!');
+            return;
+        }
+
+        resultBox.style.display = 'block';
+        statusMsg.style.display = 'block';
+        titleEl.innerText = '';
+        dlLink.style.display = 'none';
+        errorBox.style.display = 'none';
+        statusMsg.innerText = '⏳ جاري إرسال الطلب عبر الوسيط الآمن...';
+        submitBtn.disabled = true;
+
+        try {
+            // 1. إنشاء المهمة عبر البروكسي
+            const createProxyUrl = `https://corsproxy.io/?key=${API_KEY}&url=${encodeURIComponent(API)}`;
+            const createRes = await fetch(createProxyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Origin': 'https://www.savethevideo.com',
+                    'Referer': 'https://www.savethevideo.com/'
+                },
+                body: JSON.stringify({ type: 'info', url: url })
+            });
+
+            let createData;
+            try {
+                createData = await createRes.json();
+            } catch (e) {
+                createData = null;
+            }
+
+            if (!createRes.ok) {
+                const originalMsg = createData?.error?.message || createData?.message || createRes.statusText || `خطأ HTTP (${createRes.status})`;
+                throw new Error(originalMsg);
+            }
+
+            const taskId = createData?.id;
+            if (!taskId) {
+                throw new Error(createData?.error?.message || 'فشل في إنشاء معرف المهمة (Task ID)');
+            }
+
+            // 2. تتبع المهمة (Polling)
+            statusMsg.innerText = '📥 جاري معالجة الفيديو في السيرفر...';
+            let resultData = null;
+
+            for (let i = 0; i < 40; i++) {
+                await new Promise(r => setTimeout(r, 3000)); // انتظار 3 ثوانٍ بين كل محاولة
+                
+                const pollProxyUrl = `https://corsproxy.io/?key=${API_KEY}&url=${encodeURIComponent(`${API}/${taskId}`)}`;
+                const pollRes = await fetch(pollProxyUrl);
+                
+                let pollData;
+                try {
+                    pollData = await pollRes.json();
+                } catch (e) {
+                    continue;
+                }
+
+                if (pollData?.state === 'completed') {
+                    resultData = pollData.result || pollData;
+                    break;
+                }
+                if (pollData?.state === 'failed') {
+                    const failMsg = pollData.error?.message || pollData.message || 'فشل التحميل من المنصة المستهدفة';
+                    throw new Error(failMsg);
+                }
+            }
+
+            if (!resultData) throw new Error('انتهى وقت الانتظار (Timeout) - السيرفر استغرق وقتاً طويلاً');
+
+            // 3. استخراج الرابط المباشر
+            const videos = Array.isArray(resultData) ? resultData : [resultData];
+            if (!videos.length) throw new Error('لا توجد بيانات فيديو متاحة');
+
+            const video = videos[0];
+            const title = video.title || 'فيديو جاهز للتحميل';
+            const formats = video.formats || [{ url: video.url }];
+            const bestUrl = formats[0]?.url || video.url;
+
+            if (!bestUrl) throw new Error('تعذر العثور على رابط التحميل المباشر');
+
+            statusMsg.style.display = 'none';
+            titleEl.innerText = title;
+            dlLink.href = bestUrl;
+            dlLink.style.display = 'block';
+
+            addToHistory(url, 'نجح التحميل');
+
+        } catch (err) {
+            statusMsg.style.display = 'none';
+            errorBox.style.display = 'block';
+            errorBox.innerText = `❌ خطأ:\n${err.message}`;
+        } finally {
+            submitBtn.disabled = false;
+        }
+    }
+
+    function addToHistory(url, status) {
+        let history = JSON.parse(localStorage.getItem('media_history') || '[]');
+        history.unshift({ url: url.substring(0, 32) + '...', status: status });
+        if (history.length > 5) history.pop();
+        localStorage.setItem('media_history', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const list = document.getElementById('history-list');
+        const history = JSON.parse(localStorage.getItem('media_history') || '[]');
+        if (history.length === 0) return;
+
+        list.innerHTML = history.map(item => `
+            <div class="history-item">
+                <span style="direction: ltr; color: var(--text);">${item.url}</span>
+                <span class="badge">${item.status}</span>
+            </div>
+        `).join('');
+    }
+    renderHistory();
+</script>
+</body>
+</html>
